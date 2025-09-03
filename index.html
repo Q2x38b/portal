@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow">
+    <!-- Permissive CSP to allow rendering arbitrary widget code inside iframes. Tighten later if needed. -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self' data: blob: https: http: 'unsafe-inline' 'unsafe-eval';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:;
+      style-src 'self' 'unsafe-inline' https:;
+      img-src 'self' data: blob: https: http:;
+      font-src 'self' data: https:;
+      frame-src *;
+      connect-src *;
+    ">
+    <title>Secure Render</title>
+    <style>
+      :root {
+        --background: #141414;
+        --foreground: #ebebeb;
+        --text-secondary: #a1a1aa;
+        --border-color: #333;
+        --hover-bg: rgba(255,255,255,0.06);
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+      [data-theme="light"] {
+        --background: #f7f7f7;
+        --foreground: #101010;
+        --text-secondary: #525252;
+        --border-color: #ddd;
+        --hover-bg: rgba(0,0,0,0.05);
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .center-screen {
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      button {
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: inherit;
+        font-family: var(--font-mono);
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      button:hover { background: var(--hover-bg); }
+      .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.25rem;
+      }
+      .heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 0;
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 1.25rem;
+      }
+      .muted { color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.75rem; }
+      .rendered-section { margin: 1rem 0 2rem; }
+      .code-toggle { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; margin-bottom: 0.5rem; }
+      .code-container { display: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; overflow: auto; background: rgba(255,255,255,0.03); }
+      pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 0.85rem; }
+      .widget-container { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: rgba(0,0,0,0.08); }
+      .widget-iframe { width: 100%; border: 0; min-height: 200px; }
+    </style>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+  <body>
+    <!-- Login screen -->
+    <div id="login" class="center-screen">
+      <button id="signin" disabled>Loading…</button>
+    </div>
+
+    <!-- Main content -->
+    <div id="app" style="display:none">
+      <div class="container">
+        <div class="heading">
+          <div>
+            <div style="font-weight:600; font-size: 1rem;">Secure Render</div>
+            <div class="muted">Renders HTML from your Google Sheet (column A)</div>
+          </div>
+          <div>
+            <button id="signout" style="display:none">Sign out</button>
+          </div>
+        </div>
+
+        <div id="content-root"></div>
+      </div>
+    </div>
+
+    <script>
+      // === Configuration: replace these with your values ===
+      const CLIENT_ID = '936331083814-8hv2h12vfd021st5frrvhav875mucps3.apps.googleusercontent.com';
+      const API_KEY = 'AIzaSyApvQuAABFbVVDVWTOdVSrWWXhLAYeXyZo';
+      const SPREADSHEET_ID = '1iEZUGIuFGsrknHVY7hHH7DMoQc87SZMMLMoxbIJ0nMo';
+      // Read first column (A) from the sheet named "Misc". Adjust as needed (e.g. 'Sheet1!A:A').
+      const SHEET_RANGE = 'Misc!A:A';
+
+      // === Google API setup ===
+      const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly openid email profile';
+      const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
+
+      const loginEl = document.getElementById('login');
+      const appEl = document.getElementById('app');
+      const contentRoot = document.getElementById('content-root');
+      const signInBtn = document.getElementById('signin');
+      const signOutBtn = document.getElementById('signout');
+
+      let tokenClient = null;
+      let accessToken = null;
+
+      function onLoad() {
+        gapi.load('client', async () => {
+          await gapi.client.init({ apiKey: API_KEY, discoveryDocs: DISCOVERY_DOCS });
+          if (google?.accounts?.oauth2?.initTokenClient) {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID,
+              scope: SCOPES,
+              callback: (resp) => {
+                if (resp?.error) { console.error(resp); return; }
+                accessToken = resp.access_token;
+                gapi.client.setToken({ access_token: accessToken });
+                loginEl.style.display = 'none';
+                appEl.style.display = 'block';
+                signOutBtn.style.display = 'inline-flex';
+                fetchAndRender();
+              },
+            });
+            // Enable the sign-in button only once token client is ready
+            try { signInBtn.disabled = false; signInBtn.textContent = 'Sign in'; } catch (_) {}
+          }
+        });
+      }
+
+      function signIn() {
+        if (!tokenClient) { console.error('Token client not ready'); return; }
+        tokenClient.requestAccessToken();
+      }
+
+      function signOut() {
+        if (!accessToken) return;
+        google.accounts.oauth2.revoke(accessToken, () => {
+          accessToken = null;
+          gapi.client.setToken(null);
+          appEl.style.display = 'none';
+          contentRoot.innerHTML = '';
+          signOutBtn.style.display = 'none';
+          loginEl.style.display = 'flex';
+        });
+      }
+
+      async function fetchAndRender() {
+        try {
+          const resp = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: SHEET_RANGE,
+          });
+          const rows = resp?.result?.values || [];
+          renderRows(rows);
+        } catch (err) {
+          console.error('Sheets error', err);
+          contentRoot.innerHTML = '<div class="muted">Failed to load data. Check API key, OAuth Client, and permissions.</div>';
+        }
+      }
+
+      function renderRows(rows) {
+        contentRoot.innerHTML = '';
+        if (!rows.length) {
+          contentRoot.innerHTML = '<div class="muted">No rows found.</div>';
+          return;
+        }
+
+        const startIndex = (rows[0] && (rows[0][0] === 'HTML' || rows[0][0] === 'Content')) ? 1 : 0;
+        for (let i = startIndex; i < rows.length; i++) {
+          const raw = (rows[i] && rows[i][0]) ? String(rows[i][0]) : '';
+          if (!raw || !raw.trim()) continue;
+
+          // Unwrap and unescape typical CSV/Sheets quoting artifacts.
+          let cellContent = raw;
+          if (cellContent.startsWith('"') && cellContent.endsWith('"')) {
+            cellContent = cellContent.slice(1, -1);
+          }
+          cellContent = cellContent.replace(/""/g, '"');
+
+          const sectionId = `code-${i}`;
+          const frameId = `frame-${i}`;
+
+          const section = document.createElement('div');
+          section.className = 'rendered-section';
+          section.innerHTML = `
+            <div class="code-toggle" onclick="(function(){const el=document.getElementById('${sectionId}'); el.style.display = el.style.display==='block' ? 'none' : 'block';})()">Show/Hide Code</div>
+            <div id="${sectionId}" class="code-container"><pre>${escapeHtml(cellContent)}</pre></div>
+            <div class="widget-container"><iframe id="${frameId}" class="widget-iframe"></iframe></div>
+          `;
+          contentRoot.appendChild(section);
+
+          // Write content into an about:blank iframe and auto-size it
+          const iframe = section.querySelector(`#${frameId}`);
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          doc.open();
+          doc.write(cellContent);
+          doc.close();
+          setTimeout(() => {
+            try { iframe.style.height = (doc.body.scrollHeight + 20) + 'px'; } catch (_) {}
+          }, 120);
+        }
+      }
+
+      function escapeHtml(unsafe) {
+        return unsafe
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      window.addEventListener('load', onLoad);
+      signInBtn.addEventListener('click', signIn);
+      signOutBtn.addEventListener('click', signOut);
+    </script>
+  </body>
+  </html>
+
+
