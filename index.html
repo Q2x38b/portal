@@ -78,7 +78,6 @@
       .code-container { display: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; overflow: auto; background: rgba(255,255,255,0.03); }
       pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 0.85rem; }
       .widget-container { border: 0; border-radius: 0; padding: 0; background: transparent; }
-      /* Seamless look for injected content */
       .widget-container, .widget-container * { color: inherit; font-family: var(--font-sans); }
       .widget-container a { color: var(--text-secondary); }
       .widget-iframe { width: 100%; border: 0; min-height: 200px; }
@@ -108,17 +107,11 @@
     </div>
 
     <script>
-      // === Configuration: replace these with your values ===
       const CLIENT_ID = '936331083814-8hv2h12vfd021st5frrvhav875mucps3.apps.googleusercontent.com';
       const API_KEY = 'AIzaSyApvQuAABFbVVDVWTOdVSrWWXhLAYeXyZo';
       const SPREADSHEET_ID = '1iEZUGIuFGsrknHVY7hHH7DMoQc87SZMMLMoxbIJ0nMo';
-      // SHEET_RANGE can be either 'TabName!A:A' or just 'A:A'. If no tab name is included,
-      // the first sheet's title will be auto-detected and used.
       const SHEET_RANGE = 'A:A';
-      // Render only escaped plain text from column A (no script execution, no iframes)
       const RENDER_PLAIN_TEXT = true;
-
-      // === Google API setup ===
       const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly openid email profile';
       const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 
