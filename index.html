@@ -111,8 +111,9 @@
       const CLIENT_ID = '936331083814-8hv2h12vfd021st5frrvhav875mucps3.apps.googleusercontent.com';
       const API_KEY = 'AIzaSyApvQuAABFbVVDVWTOdVSrWWXhLAYeXyZo';
       const SPREADSHEET_ID = '1iEZUGIuFGsrknHVY7hHH7DMoQc87SZMMLMoxbIJ0nMo';
-      // Read first column (A) from the sheet named "Misc". Adjust as needed (e.g. 'Sheet1!A:A').
-      const SHEET_RANGE = 'Misc!A:A';
+      // SHEET_RANGE can be either 'TabName!A:A' or just 'A:A'. If no tab name is included,
+      // the first sheet's title will be auto-detected and used.
+      const SHEET_RANGE = 'A:A';
 
       // === Google API setup ===
       const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly openid email profile';
@@ -167,17 +168,35 @@
         });
       }
 
+      async function getFirstSheetTitle() {
+        try {
+          const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+          const title = meta?.result?.sheets?.[0]?.properties?.title;
+          return title || 'Sheet1';
+        } catch (e) {
+          return 'Sheet1';
+        }
+      }
+
+      async function resolveRange() {
+        if (SHEET_RANGE.includes('!')) return SHEET_RANGE;
+        const firstTitle = await getFirstSheetTitle();
+        return `${firstTitle}!${SHEET_RANGE}`;
+      }
+
       async function fetchAndRender() {
         try {
+          const effectiveRange = await resolveRange();
           const resp = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
-            range: SHEET_RANGE,
+            range: effectiveRange,
           });
           const rows = resp?.result?.values || [];
           renderRows(rows);
         } catch (err) {
-          console.error('Sheets error', err);
-          contentRoot.innerHTML = '<div class="muted">Failed to load data. Check API key, OAuth Client, and permissions.</div>';
+          const msg = err?.result?.error?.message || err?.message || 'Unknown error';
+          console.error('Sheets error', msg, err);
+          contentRoot.innerHTML = `<div class="muted">Failed to load data: ${escapeHtml(String(msg))}</div>`;
         }
       }
 
