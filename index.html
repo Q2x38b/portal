@@ -114,10 +114,8 @@
       // SHEET_RANGE can be either 'TabName!A:A' or just 'A:A'. If no tab name is included,
       // the first sheet's title will be auto-detected and used.
       const SHEET_RANGE = 'A:A';
-      // If true, render each cell inside an isolated iframe. If false, inject into the page so
-      // scripts run in the same context (can reuse OAuth token). Disable iframe if your snippets
-      // need authenticated Google calls.
-      const RENDER_IN_IFRAME = false;
+      // Render only escaped plain text from column A (no script execution, no iframes)
+      const RENDER_PLAIN_TEXT = true;
 
       // === Google API setup ===
       const SCOPES = 'https://www.googleapis.com/auth/spreadsheets.readonly openid email profile';
@@ -226,50 +224,14 @@
           cellContent = cellContent.replace(/""/g, '"');
 
           const sectionId = `code-${i}`;
-          const frameId = `frame-${i}`;
 
           const section = document.createElement('div');
           section.className = 'rendered-section';
-          if (RENDER_IN_IFRAME) {
-            section.innerHTML = `
-              <div class="code-toggle" onclick="(function(){const el=document.getElementById('${sectionId}'); el.style.display = el.style.display==='block' ? 'none' : 'block';})()">Show/Hide Code</div>
-              <div id="${sectionId}" class="code-container"><pre>${escapeHtml(cellContent)}</pre></div>
-              <div class="widget-container"><iframe id="${frameId}" class="widget-iframe"></iframe></div>
-            `;
-          } else {
-            const outputId = `out-${i}`;
-            section.innerHTML = `
-              <div class="code-toggle" onclick="(function(){const el=document.getElementById('${sectionId}'); el.style.display = el.style.display==='block' ? 'none' : 'block';})()">Show/Hide Code</div>
-              <div id="${sectionId}" class="code-container"><pre>${escapeHtml(cellContent)}</pre></div>
-              <div class="widget-container"><div id="${outputId}" class="code-output"></div></div>
-            `;
-          }
+          section.innerHTML = `
+            <div class="widget-container"><pre>${escapeHtml(cellContent)}</pre></div>
+          `;
           contentRoot.appendChild(section);
-
-          if (RENDER_IN_IFRAME) {
-            // Write content into an about:blank iframe and auto-size it
-            const iframe = section.querySelector(`#${frameId}`);
-            const doc = iframe.contentDocument || iframe.contentWindow.document;
-            doc.open();
-            doc.write(cellContent);
-            doc.close();
-            setTimeout(() => {
-              try { iframe.style.height = (doc.body.scrollHeight + 20) + 'px'; } catch (_) {}
-            }, 120);
-          } else {
-            // Inject into page context so scripts can run with same origin and access window.GOOGLE_ACCESS_TOKEN
-            const out = section.querySelector(`#out-${i}`);
-            out.innerHTML = cellContent;
-            // Re-execute scripts
-            const scripts = out.querySelectorAll('script');
-            scripts.forEach((oldS) => {
-              const s = document.createElement('script');
-              // Copy attributes
-              for (const attr of oldS.attributes) s.setAttribute(attr.name, attr.value);
-              s.text = oldS.text;
-              oldS.parentNode.replaceChild(s, oldS);
-            });
-          }
+          // No script execution or iframes
         }
       }
 
