@@ -60,7 +60,7 @@
       }
       button:hover { background: var(--hover-bg); }
       .container {
-        max-width: 1400px;
+        max-width: 1700px;
         margin: 0 auto;
         padding: 1.25rem;
       }
@@ -77,7 +77,7 @@
       .code-toggle { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; margin-bottom: 0.5rem; }
       .code-container { display: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; overflow: auto; background: rgba(255,255,255,0.03); }
       pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 0.85rem; }
-      .widget-container { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: rgba(0,0,0,0.08); }
+      .widget-container { border: 0; border-radius: 0; padding: 0; background: transparent; }
       /* Seamless look for injected content */
       .widget-container, .widget-container * { color: inherit; font-family: var(--font-sans); }
       .widget-container a { color: var(--text-secondary); }
@@ -89,8 +89,8 @@
   </head>
   <body>
     <!-- Login screen -->
-    <div id="login" class="center-screen" style="justify-content: flex-end; padding: 1rem;">
-      <button id="signin" disabled style="position: absolute; top: 12px; right: 16px;">Loading…</button>
+    <div id="login" class="center-screen" style="justify-content: center; align-items: center;">
+      <button id="signin" disabled>Loading…</button>
     </div>
 
     <!-- Main content -->
@@ -147,6 +147,8 @@
                 loginEl.style.display = 'none';
                 appEl.style.display = 'block';
                 signOutBtn.style.display = 'inline-flex';
+                // Move sign-in button to corner after login (keep for consistency if needed later)
+                try { const btn = document.getElementById('signin'); if (btn) { btn.style.position = 'absolute'; btn.style.top = '12px'; btn.style.right = '16px'; } } catch(_){}
                 fetchAndRender();
               },
             });
