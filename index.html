@@ -60,7 +60,7 @@
       }
       button:hover { background: var(--hover-bg); }
       .container {
-        max-width: 900px;
+        max-width: 1400px;
         margin: 0 auto;
         padding: 1.25rem;
       }
@@ -69,7 +69,7 @@
         align-items: center;
         justify-content: space-between;
         padding: 1rem 0;
-        border-bottom: 1px solid var(--border-color);
+        border-bottom: 0;
         margin-bottom: 1.25rem;
       }
       .muted { color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.75rem; }
@@ -78,6 +78,9 @@
       .code-container { display: none; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; overflow: auto; background: rgba(255,255,255,0.03); }
       pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 0.85rem; }
       .widget-container { border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; background: rgba(0,0,0,0.08); }
+      /* Seamless look for injected content */
+      .widget-container, .widget-container * { color: inherit; font-family: var(--font-sans); }
+      .widget-container a { color: var(--text-secondary); }
       .widget-iframe { width: 100%; border: 0; min-height: 200px; }
     </style>
     <script src="https://apis.google.com/js/api.js"></script>
@@ -85,18 +88,15 @@
   </head>
   <body>
     <!-- Login screen -->
-    <div id="login" class="center-screen">
-      <button id="signin" disabled>Loading…</button>
+    <div id="login" class="center-screen" style="justify-content: flex-end; padding: 1rem;">
+      <button id="signin" disabled style="position: absolute; top: 12px; right: 16px;">Loading…</button>
     </div>
 
     <!-- Main content -->
     <div id="app" style="display:none">
       <div class="container">
         <div class="heading">
-          <div>
-            <div style="font-weight:600; font-size: 1rem;">Secure Render</div>
-            <div class="muted">Renders HTML from your Google Sheet (column A)</div>
-          </div>
+          <div></div>
           <div>
             <button id="signout" style="display:none">Sign out</button>
           </div>
@@ -228,10 +228,13 @@
           const section = document.createElement('div');
           section.className = 'rendered-section';
           section.innerHTML = `
-            <div class="widget-container"><pre>${escapeHtml(cellContent)}</pre></div>
+            <div class="widget-container"><div id="out-${i}" class="code-output"></div></div>
           `;
           contentRoot.appendChild(section);
-          // No script execution or iframes
+
+          // Inject into page so it looks native and executes scripts
+          const out = section.querySelector(`#out-${i}`);
+          injectHtml(out, cellContent, i);
         }
       }
 
@@ -242,6 +245,42 @@
           .replace(/>/g, '&gt;')
           .replace(/\"/g, '&quot;')
           .replace(/'/g, '&#039;');
+      }
+
+      function injectHtml(container, htmlString, index) {
+        try {
+          const hasDoc = /<html|<head|<body/i.test(htmlString);
+          let contentHtml = htmlString;
+          if (hasDoc) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+            // Move styles from the embedded document's head to our page head so styles apply globally
+            const styles = Array.from(doc.querySelectorAll('head style'));
+            styles.forEach((styleEl, idx) => {
+              const copy = document.createElement('style');
+              copy.setAttribute('data-injected-style', `${index}-${idx}`);
+              copy.textContent = styleEl.textContent || '';
+              document.head.appendChild(copy);
+            });
+            contentHtml = doc.body ? doc.body.innerHTML : htmlString;
+          }
+          container.innerHTML = contentHtml;
+          // Re-execute scripts in order
+          const scripts = Array.from(container.querySelectorAll('script'));
+          scripts.forEach((oldScript) => {
+            const s = document.createElement('script');
+            for (const attr of oldScript.attributes) s.setAttribute(attr.name, attr.value);
+            if (oldScript.type) s.type = oldScript.type;
+            if (oldScript.src) {
+              s.src = oldScript.src;
+            } else {
+              s.text = oldScript.text || oldScript.textContent || '';
+            }
+            oldScript.parentNode.replaceChild(s, oldScript);
+          });
+        } catch (e) {
+          container.innerHTML = `<div class="muted">Render error: ${escapeHtml(String(e.message || e))}</div>`;
+        }
       }
 
       window.addEventListener('load', onLoad);
