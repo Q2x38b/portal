@@ -301,9 +301,9 @@
       document.addEventListener('DOMContentLoaded', () => { try { document.body.appendChild(privacyOverlay); } catch(_) {} });
       function showPrivacyOverlay() { try { privacyOverlay.classList.add('show'); } catch(_) {} }
       function hidePrivacyOverlay() { try { privacyOverlay.classList.remove('show'); } catch(_) {} }
-      // Show overlay when the page is hidden or window loses focus
+      // Show overlay when the tab is actually hidden; do not react to transient blur
       document.addEventListener('visibilitychange', () => { if (document.hidden) { showPrivacyOverlay(); } else { hidePrivacyOverlay(); } });
-      window.addEventListener('blur', () => { showPrivacyOverlay(); });
+      // Ignore window blur from dropdowns/popups; only hide overlay on focus return
       window.addEventListener('focus', () => { hidePrivacyOverlay(); });
       // Block context menu and common capture/print shortcuts
       document.addEventListener('contextmenu', (e) => { e.preventDefault(); });
