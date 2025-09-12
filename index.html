@@ -83,11 +83,6 @@
       .widget-container a { color: var(--text-secondary); }
       .widget-iframe { width: 100%; border: 0; min-height: 200px; }
       .plain-text { white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; }
-      /* Privacy overlay and print guard */
-      .privacy-overlay { position: fixed; inset: 0; background: #ffffff; z-index: 999999; display: none; }
-      .privacy-overlay.show { display: block; }
-      @media print { body { display: none !important; } }
-      iframe.secure-iframe { width: 100%; border: 0; min-height: 200px; }
     </style>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -282,62 +277,39 @@
 
       function injectHtml(container, htmlString, index) {
         try {
-          // Render inside a sandboxed iframe to reduce visibility to external scripts/extensions
-          const iframe = document.createElement('iframe');
-          iframe.className = 'secure-iframe';
-          // No allow-same-origin to isolate DOM; allow only scripts/forms/pointer-lock
-          iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-pointer-lock');
-          iframe.srcdoc = String(htmlString || '');
-          container.innerHTML = '';
-          container.appendChild(iframe);
+          const hasDoc = /<html|<head|<body/i.test(htmlString);
+          let contentHtml = htmlString;
+          if (hasDoc) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+            // Move styles from the embedded document's head to our page head so styles apply globally
+            const styles = Array.from(doc.querySelectorAll('head style'));
+            styles.forEach((styleEl, idx) => {
+              const copy = document.createElement('style');
+              copy.setAttribute('data-injected-style', `${index}-${idx}`);
+              copy.textContent = styleEl.textContent || '';
+              document.head.appendChild(copy);
+            });
+            contentHtml = doc.body ? doc.body.innerHTML : htmlString;
+          }
+          container.innerHTML = contentHtml;
+          // Re-execute scripts in order
+          const scripts = Array.from(container.querySelectorAll('script'));
+          scripts.forEach((oldScript) => {
+            const s = document.createElement('script');
+            for (const attr of oldScript.attributes) s.setAttribute(attr.name, attr.value);
+            if (oldScript.type) s.type = oldScript.type;
+            if (oldScript.src) {
+              s.src = oldScript.src;
+            } else {
+              s.text = oldScript.text || oldScript.textContent || '';
+            }
+            oldScript.parentNode.replaceChild(s, oldScript);
+          });
         } catch (e) {
           container.innerHTML = `<div class="muted">Render error: ${escapeHtml(String(e.message || e))}</div>`;
         }
       }
-
-      // Privacy/anti-capture features
-      const privacyOverlay = document.createElement('div');
-      privacyOverlay.className = 'privacy-overlay';
-      document.addEventListener('DOMContentLoaded', () => { try { document.body.appendChild(privacyOverlay); } catch(_) {} });
-      function showPrivacyOverlay() { try { privacyOverlay.classList.add('show'); } catch(_) {} }
-      function hidePrivacyOverlay() { try { privacyOverlay.classList.remove('show'); } catch(_) {} }
-      // Show overlay when the tab is actually hidden; do not react to transient blur
-      document.addEventListener('visibilitychange', () => { if (document.hidden) { showPrivacyOverlay(); } else { hidePrivacyOverlay(); } });
-      // Ignore window blur from dropdowns/popups; only hide overlay on focus return
-      window.addEventListener('focus', () => { hidePrivacyOverlay(); });
-      // Block context menu and common capture/print shortcuts
-      document.addEventListener('contextmenu', (e) => { e.preventDefault(); });
-      document.addEventListener('keydown', (e) => {
-        // Block Print Screen
-        if (e.key && e.key.toLowerCase() === 'printscreen') {
-          e.preventDefault();
-          try { navigator.clipboard && navigator.clipboard.writeText(''); } catch(_) {}
-          showPrivacyOverlay();
-          setTimeout(hidePrivacyOverlay, 1000);
-        }
-        // Block Ctrl/Cmd+P (print)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
-          e.preventDefault();
-          showPrivacyOverlay();
-          setTimeout(hidePrivacyOverlay, 800);
-        }
-        // Block Ctrl/Cmd+S (save page)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); }
-      });
-      // Basic DevTools detection (heuristic) -> cover
-      (function devtoolsGuard(){
-        let lastState = false;
-        function check() {
-          const threshold = 160;
-          const opened = (window.outerWidth - window.innerWidth > threshold) || (window.outerHeight - window.innerHeight > threshold);
-          if (opened !== lastState) {
-            lastState = opened; if (opened) showPrivacyOverlay(); else hidePrivacyOverlay();
-          }
-        }
-        setInterval(check, 800);
-      })();
-      // Remove saved Google access token on reload/navigation
-      window.addEventListener('beforeunload', () => { try { localStorage.removeItem('googleAccessToken'); localStorage.removeItem('googleAccessTokenTime'); } catch(_) {} });
 
       window.addEventListener('load', onLoad);
       signInBtn.addEventListener('click', signIn);
@@ -346,3 +318,5 @@
     </script>
   </body>
   </html>
+
+
