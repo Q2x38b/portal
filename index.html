@@ -204,9 +204,11 @@
       async function fetchAndRender() {
         try {
           const effectiveRange = await resolveRange();
+          // If range targets A:A, widen to A:B so we can stitch content split across columns A and B
+          const stitchedRange = /!A:A$/i.test(effectiveRange) ? effectiveRange.replace(/!A:A$/i, '!A:B') : effectiveRange;
           const resp = await gapi.client.sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
-            range: effectiveRange,
+            range: stitchedRange,
           });
           const rows = resp?.result?.values || [];
           renderRows(rows);
@@ -226,15 +228,18 @@
 
         const startIndex = (rows[0] && (rows[0][0] === 'HTML' || rows[0][0] === 'Content')) ? 1 : 0;
         for (let i = startIndex; i < rows.length; i++) {
-          const raw = (rows[i] && rows[i][0]) ? String(rows[i][0]) : '';
-          if (!raw || !raw.trim()) continue;
+          const aRaw = (rows[i] && rows[i][0]) ? String(rows[i][0]) : '';
+          const bRaw = (rows[i] && rows[i][1]) ? String(rows[i][1]) : '';
+          let aVal = aRaw, bVal = bRaw;
+          if (aVal.startsWith('"') && aVal.endsWith('"')) aVal = aVal.slice(1, -1);
+          if (bVal.startsWith('"') && bVal.endsWith('"')) bVal = bVal.slice(1, -1);
+          aVal = aVal.replace(/""/g, '"');
+          bVal = bVal.replace(/""/g, '"');
+          const rawCombined = (aVal || '') + (bVal || '');
+          if (!rawCombined || !rawCombined.trim()) continue;
 
           // Unwrap and unescape typical CSV/Sheets quoting artifacts.
-          let cellContent = raw;
-          if (cellContent.startsWith('"') && cellContent.endsWith('"')) {
-            cellContent = cellContent.slice(1, -1);
-          }
-          cellContent = cellContent.replace(/""/g, '"');
+          let cellContent = rawCombined;
 
           const sectionId = `code-${i}`;
 
@@ -320,5 +325,3 @@
     </script>
   </body>
   </html>
-
-
